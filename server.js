@@ -14,8 +14,10 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const SHEET_NAME = process.env.SHEET_NAME || "Sheet1";
 const API_TOKEN = process.env.API_TOKEN;
 
+const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+
 const auth = new google.auth.GoogleAuth({
-  keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+  keyFile: credentials,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
