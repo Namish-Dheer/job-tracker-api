@@ -5,6 +5,22 @@ const { google } = require("googleapis");
 
 dotenv.config();
 
+// 📧 Gmail OAuth setup
+const gmailOAuth = new google.auth.OAuth2(
+  process.env.CLIENT_ID,
+  process.env.CLIENT_SECRET
+);
+
+gmailOAuth.setCredentials({
+  refresh_token: process.env.REFRESH_TOKEN
+});
+
+const gmail = google.gmail({
+  version: "v1",
+  auth: gmailOAuth
+});
+
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -101,6 +117,57 @@ app.post("/applications", async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || "Internal server error",
+    });
+  }
+});
+
+// 📬 Get unread emails
+app.get("/unread", async (req, res) => {
+  try {
+    const response = await gmail.users.messages.list({
+      userId: "me",
+      q: "is:unread",
+      maxResults: 5
+    });
+
+    const messages = response.data.messages || [];
+    const emails = [];
+
+    for (let msg of messages) {
+      const data = await gmail.users.messages.get({
+        userId: "me",
+        id: msg.id
+      });
+
+      const headers = data.data.payload.headers;
+
+      const subject =
+        headers.find(h => h.name === "Subject")?.value || "No Subject";
+
+      const from =
+        headers.find(h => h.name === "From")?.value || "Unknown";
+
+      emails.push({ subject, from });
+    }
+
+    let summary = "📬 Your unread emails:\n\n";
+
+    emails.forEach((mail, i) => {
+      summary += `${i + 1}. ${mail.subject}\n   From: ${mail.from}\n\n`;
+    });
+
+    return res.json({
+      success: true,
+      summary,
+      count: emails.length,
+      emails
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to fetch emails"
     });
   }
 });
