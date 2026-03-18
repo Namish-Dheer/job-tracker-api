@@ -20,7 +20,6 @@ const gmail = google.gmail({
   auth: gmailOAuth
 });
 
-
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -30,6 +29,7 @@ const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const SHEET_NAME = process.env.SHEET_NAME || "Sheet1";
 const API_TOKEN = process.env.API_TOKEN;
 
+// 📊 Google Sheets setup
 const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 
 const auth = new google.auth.GoogleAuth({
@@ -37,16 +37,19 @@ const auth = new google.auth.GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
+// 🧠 Helper
 function addDays(dateStr, days) {
   const date = new Date(dateStr);
   date.setDate(date.getDate() + days);
   return date.toISOString().split("T")[0];
 }
 
+// 🔹 Health route
 app.get("/", (_req, res) => {
   res.json({ ok: true, message: "Job tracker API is running" });
 });
 
+// 📊 Add application to sheet
 app.post("/applications", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -112,6 +115,7 @@ app.post("/applications", async (req, res) => {
       fourth_followup_date: f4,
       status,
     });
+
   } catch (error) {
     console.error(error);
     res.status(500).json({
@@ -163,6 +167,15 @@ app.get("/unread", async (req, res) => {
       emails
     });
 
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to fetch emails"
+    });
+  }
+});
+
 // ✉️ Send email
 app.post("/send-email", async (req, res) => {
   try {
@@ -190,9 +203,7 @@ app.post("/send-email", async (req, res) => {
 
     await gmail.users.messages.send({
       userId: "me",
-      requestBody: {
-        raw: encodedMessage,
-      },
+      requestBody: { raw: encodedMessage }
     });
 
     return res.json({
@@ -315,16 +326,7 @@ app.post("/reply", async (req, res) => {
   }
 });
 
-
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      success: false,
-      error: error.message || "Failed to fetch emails"
-    });
-  }
-});
-
+// 🚀 Start server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
