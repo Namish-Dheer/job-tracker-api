@@ -69,7 +69,7 @@ app.post("/applications", async (req, res) => {
     if (!company || !role || !resume_used || !applied_date) {
       return res.status(400).json({
         success: false,
-        error: "company, role, resume_used, and applied_date are required",
+        error: "Missing required fields",
       });
     }
 
@@ -101,31 +101,15 @@ app.post("/applications", async (req, res) => {
       },
     });
 
-    res.json({
-      success: true,
-      row_added: true,
-      company,
-      role,
-      recruiter,
-      resume_used,
-      applied_date,
-      first_followup_date: f1,
-      second_followup_date: f2,
-      third_followup_date: f3,
-      fourth_followup_date: f4,
-      status,
-    });
+    res.json({ success: true });
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({
-      success: false,
-      error: error.message || "Internal server error",
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// 📬 Get unread emails
+// 📬 Get unread emails (WITH ID)
 app.get("/unread", async (req, res) => {
   try {
     const response = await gmail.users.messages.list({
@@ -151,27 +135,24 @@ app.get("/unread", async (req, res) => {
       const from =
         headers.find(h => h.name === "From")?.value || "Unknown";
 
-      emails.push({ subject, from });
+      emails.push({
+        id: msg.id,
+        subject,
+        from
+      });
     }
 
-    let summary = "📬 Your unread emails:\n\n";
-
-    emails.forEach((mail, i) => {
-      summary += `${i + 1}. ${mail.subject}\n   From: ${mail.from}\n\n`;
-    });
-
-    return res.json({
+    res.json({
       success: true,
-      summary,
       count: emails.length,
       emails
     });
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
-      error: error.message || "Failed to fetch emails"
+      error: error.message
     });
   }
 });
@@ -184,7 +165,7 @@ app.post("/send-email", async (req, res) => {
     if (!to || !subject || !message) {
       return res.status(400).json({
         success: false,
-        error: "to, subject, and message are required"
+        error: "Missing fields"
       });
     }
 
@@ -196,24 +177,21 @@ app.post("/send-email", async (req, res) => {
       message,
     ].join("\n");
 
-    const encodedMessage = Buffer.from(email)
+    const encoded = Buffer.from(email)
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_");
 
     await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw: encodedMessage }
+      requestBody: { raw: encoded }
     });
 
-    return res.json({
-      success: true,
-      message: "Email sent successfully"
-    });
+    res.json({ success: true });
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: error.message
     });
@@ -224,13 +202,6 @@ app.post("/send-email", async (req, res) => {
 app.get("/search", async (req, res) => {
   try {
     const { query } = req.query;
-
-    if (!query) {
-      return res.status(400).json({
-        success: false,
-        error: "query is required"
-      });
-    }
 
     const response = await gmail.users.messages.list({
       userId: "me",
@@ -255,71 +226,68 @@ app.get("/search", async (req, res) => {
       const from =
         headers.find(h => h.name === "From")?.value || "Unknown";
 
-      emails.push({ subject, from });
+      emails.push({ id: msg.id, subject, from });
     }
 
-    return res.json({
-      success: true,
-      results: emails
-    });
+    res.json({ success: true, emails });
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: error.message
     });
   }
 });
 
-// ↩️ Reply to email
+// ↩️ Reply to email (FIXED THREAD VERSION)
 app.post("/reply", async (req, res) => {
   try {
     const { messageId, replyText } = req.body;
 
-    if (!messageId || !replyText) {
-      return res.status(400).json({
-        success: false,
-        error: "messageId and replyText required"
-      });
-    }
-
     const message = await gmail.users.messages.get({
       userId: "me",
       id: messageId,
-      format: "metadata"
+      format: "metadata",
+      metadataHeaders: ["Subject", "From", "Message-ID"]
     });
 
     const headers = message.data.payload.headers;
-    const from = headers.find(h => h.name === "From").value;
-    const subject = headers.find(h => h.name === "Subject").value;
+
+    const subject = headers.find(h => h.name === "Subject")?.value || "";
+    const from = headers.find(h => h.name === "From")?.value || "";
+    const messageIdHeader = headers.find(h => h.name === "Message-ID")?.value || "";
+
+    const threadId = message.data.threadId;
 
     const email = [
       `To: ${from}`,
       `Subject: Re: ${subject}`,
+      `In-Reply-To: ${messageIdHeader}`,
+      `References: ${messageIdHeader}`,
       "Content-Type: text/plain; charset=utf-8",
       "",
       replyText,
     ].join("\n");
 
-    const encodedMessage = Buffer.from(email)
+    const encoded = Buffer.from(email)
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_");
 
     await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw: encodedMessage }
+      requestBody: {
+        raw: encoded,
+        threadId: threadId
+      }
     });
 
-    return res.json({
-      success: true,
-      message: "Reply sent"
-    });
+    res.json({ success: true });
 
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: error.message
     });
