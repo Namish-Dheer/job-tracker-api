@@ -109,7 +109,7 @@ app.post("/applications", async (req, res) => {
   }
 });
 
-// 📬 Get unread emails (WITH ID)
+// 📬 Get unread emails
 app.get("/unread", async (req, res) => {
   try {
     const response = await gmail.users.messages.list({
@@ -240,7 +240,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// ↩️ Reply to email (FIXED THREAD VERSION)
+// ↩️ Reply using messageId
 app.post("/reply", async (req, res) => {
   try {
     const { messageId, replyText } = req.body;
@@ -279,11 +279,88 @@ app.post("/reply", async (req, res) => {
       userId: "me",
       requestBody: {
         raw: encoded,
-        threadId: threadId
+        threadId
       }
     });
 
     res.json({ success: true });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 🤖 Reply to latest email (AUTOMATED)
+app.post("/reply-latest", async (req, res) => {
+  try {
+    const { replyText } = req.body;
+
+    if (!replyText) {
+      return res.status(400).json({
+        success: false,
+        error: "replyText required"
+      });
+    }
+
+    const list = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: 1
+    });
+
+    const messageId = list.data.messages?.[0]?.id;
+
+    if (!messageId) {
+      return res.status(404).json({
+        success: false,
+        error: "No emails found"
+      });
+    }
+
+    const message = await gmail.users.messages.get({
+      userId: "me",
+      id: messageId,
+      format: "metadata",
+      metadataHeaders: ["Subject", "From", "Message-ID"]
+    });
+
+    const headers = message.data.payload.headers;
+
+    const subject = headers.find(h => h.name === "Subject")?.value || "";
+    const from = headers.find(h => h.name === "From")?.value || "";
+    const messageIdHeader = headers.find(h => h.name === "Message-ID")?.value || "";
+    const threadId = message.data.threadId;
+
+    const email = [
+      `To: ${from}`,
+      `Subject: Re: ${subject}`,
+      `In-Reply-To: ${messageIdHeader}`,
+      `References: ${messageIdHeader}`,
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      replyText,
+    ].join("\n");
+
+    const encoded = Buffer.from(email)
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_");
+
+    await gmail.users.messages.send({
+      userId: "me",
+      requestBody: {
+        raw: encoded,
+        threadId
+      }
+    });
+
+    res.json({
+      success: true,
+      message: "Replied to latest email"
+    });
 
   } catch (error) {
     console.error(error);
