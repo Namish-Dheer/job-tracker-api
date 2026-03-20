@@ -138,13 +138,61 @@ app.get("/unread", async (req, res) => {
       emails.push({
         id: msg.id,
         subject,
-        from
+        from,
+        snippet: data.data.snippet
       });
     }
 
     res.json({
       success: true,
       count: emails.length,
+      emails
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 📥 Get full inbox (read + unread)
+app.get("/inbox", async (req, res) => {
+  try {
+    const response = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: 10
+    });
+
+    const messages = response.data.messages || [];
+    const emails = [];
+
+    for (let msg of messages) {
+      const data = await gmail.users.messages.get({
+        userId: "me",
+        id: msg.id
+      });
+
+      const headers = data.data.payload.headers;
+
+      const subject =
+        headers.find(h => h.name === "Subject")?.value || "No Subject";
+
+      const from =
+        headers.find(h => h.name === "From")?.value || "Unknown";
+
+      emails.push({
+        id: msg.id,
+        subject,
+        from,
+        snippet: data.data.snippet
+      });
+    }
+
+    res.json({
+      success: true,
       emails
     });
 
@@ -226,7 +274,12 @@ app.get("/search", async (req, res) => {
       const from =
         headers.find(h => h.name === "From")?.value || "Unknown";
 
-      emails.push({ id: msg.id, subject, from });
+      emails.push({
+        id: msg.id,
+        subject,
+        from,
+        snippet: data.data.snippet
+      });
     }
 
     res.json({ success: true, emails });
@@ -294,17 +347,10 @@ app.post("/reply", async (req, res) => {
   }
 });
 
-// 🤖 Reply to latest email (AUTOMATED)
+// 🤖 Reply to latest email
 app.post("/reply-latest", async (req, res) => {
   try {
     const { replyText } = req.body;
-
-    if (!replyText) {
-      return res.status(400).json({
-        success: false,
-        error: "replyText required"
-      });
-    }
 
     const list = await gmail.users.messages.list({
       userId: "me",
@@ -312,13 +358,6 @@ app.post("/reply-latest", async (req, res) => {
     });
 
     const messageId = list.data.messages?.[0]?.id;
-
-    if (!messageId) {
-      return res.status(404).json({
-        success: false,
-        error: "No emails found"
-      });
-    }
 
     const message = await gmail.users.messages.get({
       userId: "me",
@@ -332,6 +371,7 @@ app.post("/reply-latest", async (req, res) => {
     const subject = headers.find(h => h.name === "Subject")?.value || "";
     const from = headers.find(h => h.name === "From")?.value || "";
     const messageIdHeader = headers.find(h => h.name === "Message-ID")?.value || "";
+
     const threadId = message.data.threadId;
 
     const email = [
